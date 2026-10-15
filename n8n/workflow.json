@@ -1,0 +1,238 @@
+{
+  "name": "My workflow",
+  "nodes": [
+    {
+      "parameters": {
+        "path": "api/test.task/get.deals",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.2,
+      "position": [
+        0,
+        0
+      ],
+      "id": "cd1bbcd3-bade-46fe-8190-a65a3a127190",
+      "name": "Webhook",
+      "webhookId": "eb687572-e80e-4d06-8e9b-09449d7bb3bc"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "35da09dc-919c-44c3-a64c-4fec8b4567bc",
+              "name": "apiBase",
+              "value": "https://run.mob-edu.ru",
+              "type": "string"
+            },
+            {
+              "id": "db8b5dba-f874-41f8-9a30-6070bb70f99c",
+              "name": "listPath",
+              "value": "/webhook/api/test.task/get.element.list",
+              "type": "string"
+            },
+            {
+              "id": "0c61f7db-6f04-4187-89f6-8c4cc831ea58",
+              "name": "detailPath",
+              "value": "/webhook/api/test.task/get.element",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.5,
+      "position": [
+        224,
+        0
+      ],
+      "id": "5d1b267d-e490-488f-8ec3-329a8b57318e",
+      "name": "API Configuration"
+    },
+    {
+      "parameters": {
+        "url": "={{ $json.apiBase + $json.listPath }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.5,
+      "position": [
+        448,
+        0
+      ],
+      "id": "dea89342-6c47-4a5e-9c15-0f9943789d89",
+      "name": "Get Deal IDs"
+    },
+    {
+      "parameters": {
+        "jsCode": "const response = $input.first().json;\nconst ids = response.result?.deals;\n\nif (!Array.isArray(ids)) {\n  throw new Error('API не вернул список ID сделок в result.deals');\n}\n\nreturn ids.map(id => ({\n  json: {\n    id: Number(id)\n  }\n}));"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        672,
+        0
+      ],
+      "id": "db89ab89-2619-4817-86cc-5b3abbc022b5",
+      "name": "Split Deal IDs"
+    },
+    {
+      "parameters": {
+        "url": "={{ $('API Configuration').first().json.apiBase + $('API Configuration').first().json.detailPath }}",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "id",
+              "value": "={{ $json.id }}"
+            }
+          ]
+        },
+        "options": {
+          "response": {
+            "response": {
+              "neverError": true
+            }
+          }
+        }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.5,
+      "position": [
+        896,
+        0
+      ],
+      "id": "157994ec-aea8-4636-98d9-ebf073919b80",
+      "name": "Get Deal Details",
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "const responses = $input.all();\nconst sourceItems = $(\"Split Deal IDs\").all();\n\nconst data = [];\nconst errors = [];\n\nfor (let i = 0; i < responses.length; i++) {\n  const response = responses[i].json;\n  const id = sourceItems[i]?.json?.id ?? null;\n\n  const deal = response?.result;\n\n  if (deal && deal.id !== undefined) {\n    data.push({\n      id: deal.id,\n      title: deal.title ?? '',\n      amount: deal.amount ?? null,\n      responsible: {\n        id: deal.responsible?.id ?? null,\n        name: deal.responsible?.name ?? ''\n      },\n      company: {\n        id: deal.company?.id ?? null,\n        name: deal.company?.name ?? ''\n      }\n    });\n  } else {\n    errors.push({\n      id: id,\n      message:\n        response?.error ??\n        response?.message ??\n        `Не удалось получить данные сделки ${id}`\n    });\n  }\n}\n\nreturn [\n  {\n    json: {\n      success: errors.length === 0,\n      total: data.length,\n      data,\n      errors\n    }\n  }\n];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1120,
+        0
+      ],
+      "id": "0312b3fd-b5e6-4b0f-8dd1-55b9042ee866",
+      "name": "Build Deals Response"
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ $json }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [
+        1344,
+        0
+      ],
+      "id": "6a5cbb7c-5b65-4a47-bd68-34ba1aa71c58",
+      "name": "Respond to Webhook"
+    },
+    {
+      "parameters": {
+        "content": "API Configuration\n\nВход:\nWebhook GET /api/test.task/get.deals\n\nВнешний API:\nGET /webhook/api/test.task/get.element.list\n— возвращает список ID сделок\n\nGET /webhook/api/test.task/get.element?id={id}\n— возвращает подробную информацию по одной сделке\n\nВыход workflow:\n{\n  success: boolean,\n  total: number,\n  data: array,\n  errors: array\n}\n\nПри ошибке одной сделки обработка остальных продолжается.",
+        "height": 368,
+        "width": 496,
+        "color": "#0056D6"
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        176,
+        208
+      ],
+      "id": "b97cdf07-5df1-4434-9095-43165efcbcf6",
+      "name": "Sticky Note"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Webhook": {
+      "main": [
+        [
+          {
+            "node": "API Configuration",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "API Configuration": {
+      "main": [
+        [
+          {
+            "node": "Get Deal IDs",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Deal IDs": {
+      "main": [
+        [
+          {
+            "node": "Split Deal IDs",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Split Deal IDs": {
+      "main": [
+        [
+          {
+            "node": "Get Deal Details",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Deal Details": {
+      "main": [
+        [
+          {
+            "node": "Build Deals Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Deals Response": {
+      "main": [
+        [
+          {
+            "node": "Respond to Webhook",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate"
+  },
+  "versionId": "a6f30ed2-70e8-41f7-9f41-1e0c0a9e3792",
+  "meta": {
+    "instanceId": "7ca3ad784205dcb052f03cbedb4f2b9b091bc89cf4501c5eb2be6a35bcf5a429"
+  },
+  "nodeGroups": [],
+  "id": "bgVUIV4kbsKRKWMP",
+  "tags": []
+}

@@ -1,3 +1,4 @@
+```php
 <?php
 
 // Адрес n8n Webhook
@@ -14,28 +15,41 @@ $response = curl_exec($ch);
 $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
 $curlError = curl_error($ch);
 
-
-
 // Переменные
 $deals = [];
 $errors = [];
 $pageError = null;
+$partial = false;
 
-// Проверка
+// Проверяем результат запроса
 if ($response === false || $curlError) {
+
     $pageError = 'Не удалось получить данные из n8n: ' . $curlError;
-} elseif ($httpCode !== 200) {
-    $pageError = 'n8n вернул HTTP-код ' . $httpCode;
+
 } else {
 
     // Преобразуем JSON от n8n в PHP-массив
     $result = json_decode($response, true);
 
     if (!is_array($result)) {
+
         $pageError = 'Получен некорректный JSON от n8n.';
+
     } else {
-        $deals = $result['data'] ?? [];
+
+        $deals = $result['deals'] ?? [];
         $errors = $result['errors'] ?? [];
+        $partial = $result['partial'] ?? false;
+
+        // Если основной сценарий завершился ошибкой
+        if (($result['success'] ?? false) !== true) {
+
+            if (!empty($errors)) {
+                $pageError = $errors[0]['message'] ?? 'Не удалось получить данные.';
+            } else {
+                $pageError = 'Не удалось получить данные из n8n.';
+            }
+        }
     }
 }
 
@@ -71,6 +85,16 @@ function e($value)
         <div class="alert alert-danger">
             <?= e($pageError) ?>
         </div>
+
+        <?php if (!empty($errors)): ?>
+            <ul class="mt-3">
+                <?php foreach ($errors as $error): ?>
+                    <li>
+                        <?= e($error['message'] ?? 'Неизвестная ошибка') ?>
+                    </li>
+                <?php endforeach; ?>
+            </ul>
+        <?php endif; ?>
 
     <?php else: ?>
 
@@ -145,7 +169,7 @@ function e($value)
             </div>
         </div>
 
-        <?php if (!empty($errors)): ?>
+        <?php if ($partial && !empty($errors)): ?>
 
             <div class="alert alert-warning mt-4">
 
@@ -174,4 +198,6 @@ function e($value)
 </div>
 
 </body>
+</html>
+```
 </html>

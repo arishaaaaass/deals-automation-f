@@ -11,7 +11,7 @@
       "typeVersion": 2.2,
       "position": [
         0,
-        0
+        16
       ],
       "id": "cd1bbcd3-bade-46fe-8190-a65a3a127190",
       "name": "Webhook",
@@ -47,7 +47,7 @@
       "typeVersion": 3.5,
       "position": [
         224,
-        0
+        16
       ],
       "id": "5d1b267d-e490-488f-8ec3-329a8b57318e",
       "name": "API Configuration"
@@ -61,14 +61,15 @@
       "typeVersion": 4.5,
       "position": [
         448,
-        0
+        16
       ],
       "id": "dea89342-6c47-4a5e-9c15-0f9943789d89",
-      "name": "Get Deal IDs"
+      "name": "Get Deal IDs",
+      "onError": "continueErrorOutput"
     },
     {
       "parameters": {
-        "jsCode": "const response = $input.first().json;\nconst ids = response.result?.deals;\n\nif (!Array.isArray(ids)) {\n  throw new Error('API не вернул список ID сделок в result.deals');\n}\n\nreturn ids.map(id => ({\n  json: {\n    id: Number(id)\n  }\n}));"
+        "jsCode": "const deals = $json.result.deals ?? [];\n\nreturn deals.map(id => ({\n  json: {\n    id\n  }\n}));"
       },
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
@@ -111,12 +112,12 @@
     },
     {
       "parameters": {
-        "jsCode": "const responses = $input.all();\nconst sourceItems = $(\"Split Deal IDs\").all();\n\nconst data = [];\nconst errors = [];\n\nfor (let i = 0; i < responses.length; i++) {\n  const response = responses[i].json;\n  const id = sourceItems[i]?.json?.id ?? null;\n\n  const deal = response?.result;\n\n  if (deal && deal.id !== undefined) {\n    data.push({\n      id: deal.id,\n      title: deal.title ?? '',\n      amount: deal.amount ?? null,\n      responsible: {\n        id: deal.responsible?.id ?? null,\n        name: deal.responsible?.name ?? ''\n      },\n      company: {\n        id: deal.company?.id ?? null,\n        name: deal.company?.name ?? ''\n      }\n    });\n  } else {\n    errors.push({\n      id: id,\n      message:\n        response?.error ??\n        response?.message ??\n        `Не удалось получить данные сделки ${id}`\n    });\n  }\n}\n\nreturn [\n  {\n    json: {\n      success: errors.length === 0,\n      total: data.length,\n      data,\n      errors\n    }\n  }\n];"
+        "jsCode": "const items = $input.all();\nconst sourceItems = $('Split Deal IDs').all();\n\nconst deals = [];\nconst errors = [];\n\nfor (let i = 0; i < items.length; i++) {\n  const value = items[i].json;\n\n  if (value.result && value.result.id) {\n    const deal = value.result;\n\n    deals.push({\n      id: deal.id,\n      title: deal.title,\n      amount: deal.amount,\n      responsible: {\n        id: deal.responsible?.id ?? null,\n        name: deal.responsible?.name ?? null\n      },\n      company: {\n        id: deal.company?.id ?? null,\n        name: deal.company?.name ?? null\n      }\n    });\n\n  } else {\n    const sourceId = sourceItems[i]?.json?.id ?? null;\n\n    errors.push({\n      id: value.id ?? sourceId,\n      message:\n        value.error?.message ??\n        value.error ??\n        value.message ??\n        'Failed to load deal details'\n    });\n  }\n}\n\nreturn [\n  {\n    json: {\n      success: true,\n      partial: errors.length > 0,\n      total: deals.length,\n      deals,\n      errors\n    }\n  }\n];"
       },
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        1120,
+        1152,
         0
       ],
       "id": "0312b3fd-b5e6-4b0f-8dd1-55b9042ee866",
@@ -131,7 +132,7 @@
       "type": "n8n-nodes-base.respondToWebhook",
       "typeVersion": 1.5,
       "position": [
-        1344,
+        1424,
         0
       ],
       "id": "6a5cbb7c-5b65-4a47-bd68-34ba1aa71c58",
@@ -139,19 +140,81 @@
     },
     {
       "parameters": {
-        "content": "API Configuration\n\nВход:\nWebhook GET /api/test.task/get.deals\n\nВнешний API:\nGET /webhook/api/test.task/get.element.list\n— возвращает список ID сделок\n\nGET /webhook/api/test.task/get.element?id={id}\n— возвращает подробную информацию по одной сделке\n\nВыход workflow:\n{\n  success: boolean,\n  total: number,\n  data: array,\n  errors: array\n}\n\nПри ошибке одной сделки обработка остальных продолжается.",
-        "height": 368,
-        "width": 496,
+        "content": "API Configuration\n\nВход:\nWebhook GET /api/test.task/get.deals\n\nВнешний API:\nGET /webhook/api/test.task/get.element.list\n— возвращает список ID сделок\n\nGET /webhook/api/test.task/get.element?id={id}\n— возвращает подробную информацию по одной сделке\n\nВыход workflow:\n{\n  success: boolean,\n  partial: boolean,\n  total: number,\n  deals: array,\n  errors: array\n}\n\nОбработка ошибок:\n ошибка получения одной сделки не останавливает обработку остальных;\n успешные сделки возвращаются в deals;\n ошибки отдельных сделок возвращаются в errors;\n если не удалось получить исходный список ID, workflow возвращает контролируемый ответ с success = false.",
+        "height": 480,
+        "width": 544,
         "color": "#0056D6"
       },
       "type": "n8n-nodes-base.stickyNote",
       "typeVersion": 1,
       "position": [
-        176,
-        208
+        496,
+        400
       ],
       "id": "b97cdf07-5df1-4434-9095-43165efcbcf6",
       "name": "Sticky Note"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "0538c58f-ef87-4668-946f-2aee2116e36b",
+              "name": "success",
+              "value": false,
+              "type": "boolean"
+            },
+            {
+              "id": "5925ccbf-ceeb-42f4-9008-5e1a2a81005b",
+              "name": "partial",
+              "value": false,
+              "type": "boolean"
+            },
+            {
+              "id": "98ca2cf9-39ff-467c-be91-be740be1e286",
+              "name": "total",
+              "value": 0,
+              "type": "number"
+            },
+            {
+              "id": "7011822f-b9ec-4c7d-a173-da6738e45a80",
+              "name": "deals",
+              "value": "=[]",
+              "type": "array"
+            },
+            {
+              "id": "c69163a8-bb3c-43ca-a61d-ff6b1722f45c",
+              "name": "errors",
+              "value": "=[   {     \"stage\": \"get_deal_ids\",     \"message\": \"Failed to get deal IDs from external API\"   } ]",
+              "type": "array"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.5,
+      "position": [
+        672,
+        160
+      ],
+      "id": "d27334b7-52d9-4bf7-b18b-3d21a1c0a5d8",
+      "name": "Build List Error Response"
+    },
+    {
+      "parameters": {
+        "options": {
+          "responseCode": 424
+        }
+      },
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [
+        944,
+        160
+      ],
+      "id": "42e3227a-c66a-447f-8433-f2f970c30772",
+      "name": "Respond to Webhook Error"
     }
   ],
   "pinData": {},
@@ -186,6 +249,13 @@
             "type": "main",
             "index": 0
           }
+        ],
+        [
+          {
+            "node": "Build List Error Response",
+            "type": "main",
+            "index": 0
+          }
         ]
       ]
     },
@@ -208,7 +278,8 @@
             "type": "main",
             "index": 0
           }
-        ]
+        ],
+        []
       ]
     },
     "Build Deals Response": {
@@ -221,14 +292,25 @@
           }
         ]
       ]
+    },
+    "Build List Error Response": {
+      "main": [
+        [
+          {
+            "node": "Respond to Webhook Error",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
     }
   },
-  "active": false,
+  "active": true,
   "settings": {
     "executionOrder": "v1",
     "binaryMode": "separate"
   },
-  "versionId": "a6f30ed2-70e8-41f7-9f41-1e0c0a9e3792",
+  "versionId": "f366515d-4c2f-4d2e-b27e-a112c015769c",
   "meta": {
     "instanceId": "7ca3ad784205dcb052f03cbedb4f2b9b091bc89cf4501c5eb2be6a35bcf5a429"
   },
